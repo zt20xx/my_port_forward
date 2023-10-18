@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"io"
 	"net"
 	"os"
@@ -10,11 +11,12 @@ import (
 )
 
 type file_ini struct {
-	bind_port  string
-	user_port  string
-	token      string
-	bind1_port string
-	user1_port string
+	server_addr string
+	bind_port   string
+	user_port   string
+	token       string
+	bind1_port  string
+	user1_port  string
 }
 
 var data = &file_ini{
@@ -22,8 +24,30 @@ var data = &file_ini{
 	token:     "12345678",
 }
 
+func getLocalIP() (string, error) {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "", err
+	}
+	// 遍历所有网络接口，找到一个有效的IPv4或IPv6地址
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String(), nil // 返回IPv4地址
+			}
+			return ipnet.IP.String(), errors.New("无法获取本机服务器IPv4地址") // 返回IPv6地址
+		}
+	}
+	return "", errors.New("无法获取本机服务器IP地址")
+}
 func start() {
-	listener_bind, err := net.Listen("tcp", "192.168.31.72:"+data.bind_port)
+	server_addr, err := getLocalIP()
+	if err != nil {
+		panic("get ip error")
+	}
+	data.server_addr = server_addr
+
+	listener_bind, err := net.Listen("tcp", data.server_addr+":"+data.bind_port)
 	if err != nil {
 		println("listen error", err)
 		return
@@ -50,7 +74,7 @@ func start() {
 }
 func port_foward(user_port, bind_port string) {
 	println("listening port:" + user_port)
-	listener_user, err := net.Listen("tcp", "192.168.31.72:"+user_port)
+	listener_user, err := net.Listen("tcp", data.server_addr+":"+user_port)
 	if err != nil {
 		panic("user port error,please check port " + user_port)
 	}
@@ -60,7 +84,7 @@ func port_foward(user_port, bind_port string) {
 		if err != nil {
 			continue
 		}
-		listener_bind, err := net.Listen("tcp", "192.168.31.72:"+bind_port)
+		listener_bind, err := net.Listen("tcp", data.server_addr+":"+bind_port)
 		if err != nil {
 			panic("bind port error,please check port " + bind_port)
 		}
